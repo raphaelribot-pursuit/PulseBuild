@@ -28,6 +28,8 @@ export function VoiceStatusBadge() {
   const toggleTier2Voice = useUIStore((s) => s.toggleTier2Voice);
   const voiceURI = useUIStore((s) => s.voiceURI);
   const setVoiceURI = useUIStore((s) => s.setVoiceURI);
+  const voiceProvider = useUIStore((s) => s.voiceProvider);
+  const setVoiceProvider = useUIStore((s) => s.setVoiceProvider);
 
   const [voices, setVoices] = useState<VoiceCandidate[]>([]);
   const [voicesLoadFailed, setVoicesLoadFailed] = useState(false);
@@ -103,7 +105,19 @@ export function VoiceStatusBadge() {
       >
         Tier 2: {tier2VoiceEnabled ? "On" : "Off"}
       </button>
-      {voices.length > 0 && (
+      <button
+        onClick={() => setVoiceProvider(voiceProvider === "browser" ? "elevenlabs" : "browser")}
+        disabled={voiceMuted}
+        className={`text-[10px] font-data uppercase tracking-wide rounded-full px-2 py-0.5 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+          voiceProvider === "elevenlabs"
+            ? "text-signal-cyan border-signal-cyan/40 hover:bg-signal-cyan/10"
+            : "text-muted-text border-white/10 hover:border-white/20"
+        }`}
+        title="Switch between the free browser voice and cloud ElevenLabs TTS. ElevenLabs requires ELEVENLABS_API_KEY to be set; falls back to the browser voice automatically if the cloud call fails."
+      >
+        {voiceProvider === "elevenlabs" ? "Voice src: ElevenLabs" : "Voice src: Browser"}
+      </button>
+      {voiceProvider === "browser" && voices.length > 0 && (
         <select
           value={voiceURI ?? ""}
           onChange={(e) => setVoiceURI(e.target.value || null)}
@@ -119,7 +133,7 @@ export function VoiceStatusBadge() {
           ))}
         </select>
       )}
-      {voices.length === 0 && voicesLoadFailed && (
+      {voiceProvider === "browser" && voices.length === 0 && voicesLoadFailed && (
         <span
           className="text-[10px] font-data uppercase tracking-wide rounded-full px-2 py-0.5 border border-white/10 text-muted-text opacity-60"
           title="This browser didn't report any installed voices. Spoken alerts will still use the OS default."

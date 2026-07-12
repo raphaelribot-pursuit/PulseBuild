@@ -34,6 +34,15 @@ export interface UIStoreState {
   voiceURI: string | null;
   setVoiceURI: (voiceURI: string | null) => void;
 
+  /** Post-Phase-8 addition: choice between the free browser
+   * SpeechSynthesis path (lib/voiceAdapter.ts) and cloud ElevenLabs TTS
+   * (lib/cloudVoiceAdapter.ts). Defaults to "browser" — cloud requires an
+   * ELEVENLABS_API_KEY the user may not have set up, so it must be an
+   * explicit opt-in, never a silent default that breaks the demo if the
+   * key's missing or the free-tier quota runs out. */
+  voiceProvider: "browser" | "elevenlabs";
+  setVoiceProvider: (provider: "browser" | "elevenlabs") => void;
+
   selectedSignalId: string | null;
   selectSignal: (signalId: string | null) => void;
 }
@@ -47,6 +56,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
 
   voiceURI: null,
   setVoiceURI: (voiceURI) => set({ voiceURI }),
+
+  voiceProvider: "browser",
+  setVoiceProvider: (voiceProvider) => set({ voiceProvider }),
 
   selectedSignalId: null,
   selectSignal: (signalId) => set({ selectedSignalId: signalId }),

@@ -27,6 +27,7 @@ import { runVerificationEngine } from "@/engines/verificationEngine";
 import { runExecutionSimulation } from "@/lib/executionSimulation";
 import { useProjectStore } from "@/store/useProjectStore";
 import { resetSpokenSignals, stopSpeech } from "@/lib/voiceAdapter";
+import { stopCloudSpeech } from "@/lib/cloudVoiceAdapter";
 
 /**
  * useAgentStore
@@ -180,6 +181,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const output = recompute([], DEMO_CURRENT_DATE);
     resetSpokenSignals();
     stopSpeech(); // don't let a queued alert from the old run keep talking into the new one
+    stopCloudSpeech();
     set({
       revealedSignalIds: [],
       signalOverrides: {},

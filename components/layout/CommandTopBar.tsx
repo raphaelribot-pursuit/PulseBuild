@@ -4,6 +4,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { useAgentStore } from "@/store/useAgentStore";
 import { useSimulationStore, SimulationStatus } from "@/store/useSimulationStore";
 import { formatAbsoluteTime } from "@/lib/formatters";
+import { unlockAudio } from "@/lib/cloudVoiceAdapter";
 
 /**
  * CommandTopBar
@@ -69,7 +70,10 @@ export function CommandTopBar() {
           </span>
         ) : (
           <button
-            onClick={startSimulation}
+            onClick={() => {
+              unlockAudio(); // real user gesture — unlocks <audio> playback for later timer-driven alerts
+              startSimulation();
+            }}
             className="text-sm font-medium px-4 py-2 rounded-md bg-steel-blue text-white hover:bg-steel-blue/80 transition-colors"
           >
             {status === "paused" ? "Resume Simulation" : "Start Simulation"}

@@ -192,6 +192,16 @@ export function getAvailableVoices(): VoiceCandidate[] {
   });
 }
 
+/** Real-time check of whether the browser voice is currently speaking or
+ * has anything queued. Used by the simulation's pacing logic to wait for
+ * ACTUAL completion rather than an estimate — see isCloudSpeaking in
+ * cloudVoiceAdapter.ts for the equivalent on the ElevenLabs path. */
+export function isBrowserSpeaking(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!("speechSynthesis" in window)) return false;
+  return window.speechSynthesis.speaking || window.speechSynthesis.pending;
+}
+
 /** Thin wrapper around the actual browser API. No-ops outside the
  * browser (SSR) or if SpeechSynthesis isn't supported.
  *
