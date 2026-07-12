@@ -83,14 +83,161 @@ export function resetSpokenSignals(): void {
   spokenSignalIds.clear();
 }
 
+/** Minimal shape we actually read off SpeechSynthesisVoice — kept as our
+ * own interface (rather than importing the DOM lib type) so scoring/
+ * selection stays pure and unit-testable outside a browser. */
+export interface VoiceCandidate {
+  voiceURI: string;
+  name: string;
+  lang: string;
+}
+
+/**
+ * Voice quality scoring.
+ * Default OS voices exposed to SpeechSynthesis are typically the
+ * lowest-quality "compact" tier (e.g. macOS's plain "Samantha," Windows'
+ * plain "Microsoft David/Zira"). Every major platform also exposes
+ * higher-quality voices through the SAME API once installed/available —
+ * macOS "Enhanced"/"Premium" voices (the same engine Siri uses), Windows
+ * Edge's cloud-backed "Online (Natural)" voices, Chrome/Android's Google
+ * voices. speechSynthesis has no explicit "quality" field, so we score by
+ * name patterns that reliably show up across these tiers.
+ *
+ * Pure and platform-agnostic on purpose: no OS detection, just scoring
+ * whatever voice list the browser actually reports, so the same logic
+ * picks the best available voice on any machine running the demo.
+ */
+const QUALITY_HINTS: { pattern: RegExp; weight: number }[] = [
+  { pattern: /premium/i, weight: 4 },
+  { pattern: /enhanced/i, weight: 4 },
+  { pattern: /neural/i, weight: 4 },
+  { pattern: /natural/i, weight: 4 }, // e.g. "Microsoft Aria Online (Natural)"
+  { pattern: /online/i, weight: 1 }, // cloud-backed voices tend to sound better than on-device compact ones
+  // Named macOS voices that ship at Enhanced/Premium quality even when
+  // the suffix isn't present in every OS version's naming:
+  { pattern: /\b(ava|zoe|evan|nathan|allison|tom)\b/i, weight: 2 },
+  { pattern: /\bgoogle\b/i, weight: 1 },
+];
+
+const LOW_QUALITY_HINTS: { pattern: RegExp; weight: number }[] = [
+  { pattern: /compact/i, weight: -3 },
+  { pattern: /\bnovelty\b/i, weight: -5 }, // e.g. "Bad News", "Bells" — never appropriate for a demo
+];
+
+export function scoreVoiceQuality(voice: VoiceCandidate): number {
+  let score = 0;
+  for (const { pattern, weight } of [...QUALITY_HINTS, ...LOW_QUALITY_HINTS]) {
+    if (pattern.test(voice.name)) score += weight;
+  }
+  return score;
+}
+
+/** Picks the best-scoring English voice from whatever the browser
+ * reports as available. Falls back to the best-scoring voice of any
+ * language, then to null (caller falls back to the OS default) if the
+ * list is empty. Ties broken by list order (stable, deterministic). */
+export function pickBestVoice(voices: VoiceCandidate[]): VoiceCandidate | null {
+  if (voices.length === 0) return null;
+
+  const english = voices.filter((v) => /^en/i.test(v.lang));
+  const pool = english.length > 0 ? english : voices;
+
+  return [...pool].sort((a, b) => scoreVoiceQuality(b) - scoreVoiceQuality(a))[0];
+}
+
+/** Pure estimate of how long buildVoiceText's output will take to speak
+ * at the SpeechSynthesisUtterance default rate (rate = 1.0, ~155 words/
+ * minute is a reasonable average across browser TTS voices). Used by
+ * the simulation layer to pace event playback around voice alerts —
+ * kept here as a pure function (no browser API) so it's directly
+ * unit-testable and reusable outside a browser context. A fixed 1200ms
+ * buffer is added on top of the raw estimate: short pause between
+ * utterances plus margin for slower voices/engines. */
+export function estimateSpeechDurationMs(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const WORDS_PER_MINUTE = 155;
+  const speakingMs = (words / WORDS_PER_MINUTE) * 60_000;
+  const BUFFER_MS = 1200;
+  return Math.round(speakingMs + BUFFER_MS);
+}
+
+/** Browser wrapper around speechSynthesis.getVoices(). Voice lists load
+ * asynchronously on most browsers (fired via the 'voiceschanged' event),
+ * so an empty array on first call is normal — callers should re-check
+ * after that event, which VoiceEngine's mount effect does. Returns our
+ * plain VoiceCandidate shape so it composes with the pure functions
+ * above. */
+export function getAvailableVoices(): VoiceCandidate[] {
+  if (typeof window === "undefined") return [];
+  if (!("speechSynthesis" in window)) return [];
+
+  const raw = window.speechSynthesis.getVoices().map((v) => ({
+    voiceURI: v.voiceURI,
+    name: v.name,
+    lang: v.lang,
+  }));
+
+  // macOS Chrome/Safari are known to report the same voice twice (same
+  // voiceURI) because the OS registers each voice through more than one
+  // internal service. Since voiceURI is used as the React key for the
+  // picker's <option> list, undeduped duplicates trigger React's
+  // "two children with the same key" warning — repeatedly, since this
+  // list is re-fetched on every voiceschanged event and poll tick.
+  // Dedupe by voiceURI here so every consumer gets a clean list.
+  const seen = new Set<string>();
+  return raw.filter((v) => {
+    if (seen.has(v.voiceURI)) return false;
+    seen.add(v.voiceURI);
+    return true;
+  });
+}
+
 /** Thin wrapper around the actual browser API. No-ops outside the
- * browser (SSR) or if SpeechSynthesis isn't supported. */
-export function speak(text: string): void {
+ * browser (SSR) or if SpeechSynthesis isn't supported.
+ *
+ * IMPORTANT: does NOT call speechSynthesis.cancel() here. An earlier
+ * version cancelled before every utterance to prevent overlap, but that
+ * actually caused the opposite problem: if a signal fired while a prior
+ * alert was still mid-sentence, cancel() cut it off and immediately
+ * replaced it — audible as alerts "colliding." The Web Speech API
+ * queues utterances natively when you call speak() repeatedly without
+ * cancelling, so leaning on that queue means every alert is heard in
+ * full, back to back, in the order signals actually occurred.
+ *
+ * Voice selection: if `preferredVoiceURI` is given (the user's explicit
+ * choice, e.g. from a settings dropdown), use that exact voice if it's
+ * still available. Otherwise auto-pick the best-scoring installed voice
+ * via pickBestVoice — this is what actually fixes "sounds robotic by
+ * default": browsers silently default to the lowest-quality system
+ * voice unless a voice is explicitly assigned on the utterance. */
+export function speak(text: string, preferredVoiceURI?: string | null): void {
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
 
-  window.speechSynthesis.cancel(); // no overlapping utterances
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 1.0;
+
+  const voices = getAvailableVoices();
+  const chosen =
+    (preferredVoiceURI && voices.find((v) => v.voiceURI === preferredVoiceURI)) ||
+    pickBestVoice(voices);
+
+  if (chosen) {
+    const nativeVoice = window.speechSynthesis
+      .getVoices()
+      .find((v) => v.voiceURI === chosen.voiceURI);
+    if (nativeVoice) utterance.voice = nativeVoice;
+  }
+
   window.speechSynthesis.speak(utterance);
+}
+
+/** Explicit, intentional interrupt — used only for mute and simulation
+ * reset, where we WANT to drop anything queued/speaking immediately,
+ * as opposed to normal playback where alerts should queue and finish. */
+export function stopSpeech(): void {
+  if (typeof window === "undefined") return;
+  if (!("speechSynthesis" in window)) return;
+
+  window.speechSynthesis.cancel();
 }

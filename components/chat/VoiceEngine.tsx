@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAgentStore } from "@/store/useAgentStore";
 import { useUIStore } from "@/store/useUIStore";
-import { shouldSpeak, buildVoiceText, hasSpoken, markSpoken, speak } from "@/lib/voiceAdapter";
+import { shouldSpeak, buildVoiceText, hasSpoken, markSpoken, speak, stopSpeech } from "@/lib/voiceAdapter";
 
 /**
  * VoiceEngine
@@ -18,20 +18,25 @@ export function VoiceEngine() {
   const analyses = useAgentStore((s) => s.analyses);
   const voiceMuted = useUIStore((s) => s.voiceMuted);
   const tier2VoiceEnabled = useUIStore((s) => s.tier2VoiceEnabled);
+  const voiceURI = useUIStore((s) => s.voiceURI);
 
   useEffect(() => {
-    if (voiceMuted) return;
+    if (voiceMuted) {
+      stopSpeech(); // muting should cut off anything speaking/queued right now
+      return;
+    }
     for (const analysis of analyses) {
       const signalId = analysis.signal.id;
       if (hasSpoken(signalId)) continue;
       if (!shouldSpeak({ analysis, muted: voiceMuted, tier2VoiceEnabled })) continue;
 
-      speak(buildVoiceText(analysis));
+      speak(buildVoiceText(analysis), voiceURI);
       markSpoken(signalId);
     }
     // Only re-run when the analyses set changes shape/content, mute
-    // toggles, or the Tier 2 opt-in changes — not on every render.
-  }, [analyses, voiceMuted, tier2VoiceEnabled]);
+    // toggles, the Tier 2 opt-in changes, or the chosen voice changes —
+    // not on every render.
+  }, [analyses, voiceMuted, tier2VoiceEnabled, voiceURI]);
 
   return null;
 }

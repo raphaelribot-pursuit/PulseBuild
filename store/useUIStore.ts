@@ -23,6 +23,17 @@ export interface UIStoreState {
   tier2VoiceEnabled: boolean;
   toggleTier2Voice: () => void;
 
+  /** Post-Phase-8 addition: explicit voice override for the voice
+   * adapter's speechSynthesis calls (see lib/voiceAdapter.ts). Null
+   * means "auto-pick the best-scoring installed voice" — the default
+   * behavior. Set by the voice picker in VoiceStatusBadge once the
+   * browser reports available voices. Stored as a voiceURI string
+   * (not the SpeechSynthesisVoice object itself, which isn't
+   * serializable/stable across the store per the Architecture Section
+   * 9 state rule). */
+  voiceURI: string | null;
+  setVoiceURI: (voiceURI: string | null) => void;
+
   selectedSignalId: string | null;
   selectSignal: (signalId: string | null) => void;
 }
@@ -33,6 +44,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
 
   tier2VoiceEnabled: false,
   toggleTier2Voice: () => set((s) => ({ tier2VoiceEnabled: !s.tier2VoiceEnabled })),
+
+  voiceURI: null,
+  setVoiceURI: (voiceURI) => set({ voiceURI }),
 
   selectedSignalId: null,
   selectSignal: (signalId) => set({ selectedSignalId: signalId }),

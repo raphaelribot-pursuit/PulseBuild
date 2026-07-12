@@ -26,7 +26,7 @@ import { runApprovalEngine, decideApproval } from "@/engines/approvalEngine";
 import { runVerificationEngine } from "@/engines/verificationEngine";
 import { runExecutionSimulation } from "@/lib/executionSimulation";
 import { useProjectStore } from "@/store/useProjectStore";
-import { resetSpokenSignals } from "@/lib/voiceAdapter";
+import { resetSpokenSignals, stopSpeech } from "@/lib/voiceAdapter";
 
 /**
  * useAgentStore
@@ -179,6 +179,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   resetAgentState: () => {
     const output = recompute([], DEMO_CURRENT_DATE);
     resetSpokenSignals();
+    stopSpeech(); // don't let a queued alert from the old run keep talking into the new one
     set({
       revealedSignalIds: [],
       signalOverrides: {},
