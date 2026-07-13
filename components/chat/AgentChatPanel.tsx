@@ -84,11 +84,28 @@ export function AgentChatPanel() {
     }
   }
 
+  function resetChat() {
+    setMessages([]);
+    setInput("");
+    setError(null);
+    setLoading(false);
+  }
+
   return (
     <div className="bg-white/[0.03] border border-white/10 rounded-lg p-4 flex flex-col h-full">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold">Agent Chat</h2>
-        <VoiceStatusBadge />
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={resetChat}
+              className="text-[10px] font-medium text-muted-text border border-white/10 rounded-md px-2 py-1 hover:bg-white/5 hover:text-white/90 transition-colors"
+            >
+              New chat
+            </button>
+          )}
+          <VoiceStatusBadge />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 min-h-[200px]">
