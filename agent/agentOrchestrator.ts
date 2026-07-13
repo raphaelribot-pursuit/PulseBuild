@@ -74,6 +74,30 @@ export interface OrchestratorOutput {
 
 const TERMINAL_STATUSES = new Set(["resolved", "archived"]);
 
+/**
+ * Bugfix (Phase 8 follow-up): statuses at which a human decision has
+ * already been recorded for this signal's recommendation — either the
+ * decision hasn't been verified yet, or it has and came back partial/
+ * unresolved. Either way, a *new* recommendation should not be generated
+ * and the signal should not be scored as "still needs attention" the same
+ * way an untouched signal is.
+ *
+ * Previously this only checked for "action_taken", but nothing in the
+ * runtime pipeline (useAgentStore.ts's approve/reject/tryAlternative flow)
+ * ever writes that status — it only ever writes "resolved" or
+ * "verification_pending". That meant every partially-resolved or
+ * unresolved outcome (e.g. trying an alternative that's a mitigation-only
+ * action like crew_reassignment/task_resequence, which the Verification
+ * Engine always classifies as partially_resolved by design) left
+ * hasUnresolvedRecommendation stuck at true — identical to a signal no
+ * one had ever acted on. The signal kept its original tier, stayed the
+ * top blocker, kept penalizing Health/Drift, and the Recommendation Queue
+ * kept regenerating the same primary recommendation — so approving an
+ * action or trying an alternative appeared to do nothing even though the
+ * decision and verification were correctly recorded.
+ */
+const ADDRESSED_STATUSES = new Set(["action_taken", "verification_pending"]);
+
 function isActive(signal: ProjectSignal): boolean {
   return !TERMINAL_STATUSES.has(signal.status);
 }
@@ -109,7 +133,7 @@ export function runAgentOrchestrator(
     const requiresRecommendation =
       priorityResult.data.tier === "Tier1" || priorityResult.data.tier === "Tier2";
     const hasUnresolvedRecommendation =
-      isActive(signal) && requiresRecommendation && signal.status !== "action_taken";
+      isActive(signal) && requiresRecommendation && !ADDRESSED_STATUSES.has(signal.status);
 
     return {
       signal,

@@ -20,6 +20,10 @@ import { runDriftEngine } from "@/engines/driftEngine";
 import { ProjectSignal } from "@/domain/types";
 
 const TERMINAL_STATUSES = new Set(["resolved", "archived"]);
+// Kept in sync with agent/agentOrchestrator.ts's ADDRESSED_STATUSES fix —
+// "verification_pending" means a decision was already recorded (possibly
+// partial/unresolved), not that the signal is untouched.
+const ADDRESSED_STATUSES = new Set(["action_taken", "verification_pending"]);
 
 /**
  * Composes dependency -> priority for every seeded signal. This mirrors
@@ -42,7 +46,7 @@ function evaluateAllSignals(signals: ProjectSignal[]): SignalEvaluation[] {
     const requiresRecommendation =
       priorityResult.data.tier === "Tier1" || priorityResult.data.tier === "Tier2";
     const hasUnresolvedRecommendation =
-      isActive && requiresRecommendation && signal.status !== "action_taken";
+      isActive && requiresRecommendation && !ADDRESSED_STATUSES.has(signal.status);
 
     return {
       signal,

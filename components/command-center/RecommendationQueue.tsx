@@ -25,6 +25,7 @@ export function RecommendationQueue() {
   const analyses = useAgentStore((s) => s.analyses);
   const approvals = useAgentStore((s) => s.approvals);
   const verifications = useAgentStore((s) => s.verifications);
+  const attemptedAlternatives = useAgentStore((s) => s.attemptedAlternatives);
   const approveRecommendation = useAgentStore((s) => s.approveRecommendation);
   const rejectRecommendation = useAgentStore((s) => s.rejectRecommendation);
   const tryAlternative = useAgentStore((s) => s.tryAlternative);
@@ -54,11 +55,28 @@ export function RecommendationQueue() {
           const verification = verifications[recommendation.id];
           const decided = approval?.status === "approved" || approval?.status === "rejected";
           const isClosed = signal.status === "resolved" || signal.status === "archived";
+          const tried = attemptedAlternatives[recommendation.id] ?? [];
+          // Only offer alternatives that haven't been tried yet. Some
+          // action categories (crew_reassignment, task_resequence) are
+          // always classified partially_resolved by design and can never
+          // come back resolved — without this filter, an already-tried
+          // alternative kept reappearing and re-clicking it just
+          // reproduced the identical outcome, which looked like the
+          // button doing nothing.
+          const untriedAlternatives = recommendation.alternatives
+            .map((alt, i) => ({ alt, i }))
+            .filter(({ i }) => !tried.includes(i));
           const canTryAlternative =
             !isClosed &&
-            recommendation.alternatives.length > 0 &&
+            untriedAlternatives.length > 0 &&
             (approval?.status === "rejected" ||
               (verification && verification.outcome !== "resolved"));
+          const exhaustedAlternatives =
+            !isClosed &&
+            recommendation.alternatives.length > 0 &&
+            untriedAlternatives.length === 0 &&
+            verification &&
+            verification.outcome !== "resolved";
 
           return (
             <div
@@ -141,16 +159,19 @@ export function RecommendationQueue() {
                 >
                   Reject
                 </button>
-                {!canTryAlternative && recommendation.alternatives.length > 0 && !isClosed && (
-                  <span className="text-[10px] text-muted-text ml-auto">
-                    {recommendation.alternatives.length} alternative(s) available
-                  </span>
-                )}
+                {!canTryAlternative &&
+                  !exhaustedAlternatives &&
+                  recommendation.alternatives.length > 0 &&
+                  !isClosed && (
+                    <span className="text-[10px] text-muted-text ml-auto">
+                      {recommendation.alternatives.length} alternative(s) available
+                    </span>
+                  )}
               </div>
 
               {canTryAlternative && (
                 <div className="mt-2 flex flex-col gap-1.5 animate-fade-in-up">
-                  {recommendation.alternatives.map((alt, i) => (
+                  {untriedAlternatives.map(({ alt, i }) => (
                     <div
                       key={i}
                       className="flex items-center justify-between gap-2 text-xs border border-white/10 rounded-md px-2 py-1.5"
@@ -165,6 +186,13 @@ export function RecommendationQueue() {
                     </div>
                   ))}
                 </div>
+              )}
+
+              {exhaustedAlternatives && (
+                <p className="mt-2 text-xs text-muted-text animate-fade-in-up">
+                  All alternatives tried — none fully resolved this signal. Keep monitoring; it
+                  will clear once the underlying condition does.
+                </p>
               )}
             </div>
           );

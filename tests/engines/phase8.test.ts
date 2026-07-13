@@ -125,4 +125,92 @@ describe("Try Alternative (Phase 8)", () => {
 
     expect(useAgentStore.getState().approvals[recId]).toBeUndefined();
   });
+
+  it("regression: a partially-resolved alternative clears hasUnresolvedRecommendation instead of leaving the signal flagged as untouched", () => {
+    // Bug: hasUnresolvedRecommendation used to check signal.status !==
+    // "action_taken", but the runtime pipeline never writes that status —
+    // it only ever writes "resolved" or "verification_pending". So a
+    // mitigation-only alternative (crew_reassignment / task_resequence),
+    // which the Verification Engine always classifies as
+    // partially_resolved by design, left the signal looking identical to
+    // one no one had ever acted on: same tier, same primary
+    // recommendation regenerated on recompute, still counted as an
+    // unresolved recommendation against Health/Drift, still eligible to
+    // be the top blocker. Approving or trying an alternative appeared to
+    // do nothing even though the decision and verification were correctly
+    // recorded in `approvals` / `verifications`.
+    useAgentStore.getState().ingestSignal("sig_02_material_delay");
+    let analysis = useAgentStore
+      .getState()
+      .analyses.find((a) => a.signal.id === "sig_02_material_delay");
+    const recId = analysis!.recommendation!.id;
+
+    expect(analysis!.hasUnresolvedRecommendation).toBe(true);
+
+    const altIndex = analysis!.recommendation!.alternatives.findIndex((alt) =>
+      ["crew_reassignment", "task_resequence"].includes(alt.actionCategory)
+    );
+    expect(altIndex).toBeGreaterThanOrEqual(0);
+
+    useAgentStore.getState().tryAlternative(recId, altIndex);
+
+    const verification = useAgentStore.getState().verifications[recId];
+    expect(verification.outcome).toBe("partially_resolved");
+
+    analysis = useAgentStore
+      .getState()
+      .analyses.find((a) => a.signal.id === "sig_02_material_delay");
+    expect(analysis!.signal.status).toBe("verification_pending");
+    // The actual regression assertion: once a decision has been recorded
+    // and verified — even partially — the signal must stop being scored
+    // as if it still needs a fresh recommendation.
+    expect(analysis!.hasUnresolvedRecommendation).toBe(false);
+  });
+
+  it("regression: an already-tried alternative is not offered again, even though its outcome will never be 'resolved'", () => {
+    // Bug: canTryAlternative in RecommendationQueue.tsx only checked
+    // `verification.outcome !== "resolved"`, with no memory of which
+    // alternative had already been run. crew_reassignment / task_resequence
+    // alternatives are classified partially_resolved by the Verification
+    // Engine every single time, by design — so that condition can never
+    // flip false on its own, and the same alternative kept reappearing
+    // for the user to click again, deterministically reproducing the
+    // identical outcome. From the user's side this looked exactly like
+    // the button doing nothing. The store now records which alternative
+    // indices have been attempted per recommendation id, so the UI layer
+    // can stop offering ones already tried instead of relying solely on
+    // the outcome field.
+    useAgentStore.getState().ingestSignal("sig_02_material_delay");
+    const analysis = useAgentStore
+      .getState()
+      .analyses.find((a) => a.signal.id === "sig_02_material_delay");
+    const recId = analysis!.recommendation!.id;
+
+    const altIndex = analysis!.recommendation!.alternatives.findIndex((alt) =>
+      ["crew_reassignment", "task_resequence"].includes(alt.actionCategory)
+    );
+    expect(altIndex).toBeGreaterThanOrEqual(0);
+
+    expect(useAgentStore.getState().attemptedAlternatives[recId]).toBeUndefined();
+
+    useAgentStore.getState().tryAlternative(recId, altIndex);
+
+    const verification = useAgentStore.getState().verifications[recId];
+    expect(verification.outcome).toBe("partially_resolved");
+
+    // The actual regression assertion: the attempted index is recorded
+    // even though the outcome (deliberately) never became "resolved" —
+    // this is what lets the UI stop offering it, independent of outcome.
+    expect(useAgentStore.getState().attemptedAlternatives[recId]).toEqual([altIndex]);
+
+    // Trying the SAME alternative again should still work mechanically
+    // (the pipeline itself is unaffected) and should append rather than
+    // duplicate/overwrite, so a second distinct alternative could still
+    // be tracked correctly later.
+    useAgentStore.getState().tryAlternative(recId, altIndex);
+    expect(useAgentStore.getState().attemptedAlternatives[recId]).toEqual([
+      altIndex,
+      altIndex,
+    ]);
+  });
 });

@@ -107,6 +107,17 @@ export interface AgentStoreState {
   approvals: Record<string, ApprovalResult>;
   /** Latest VerificationResult per recommendation id, once verified. */
   verifications: Record<string, VerificationResult>;
+  /** Phase 8 fix: indices of recommendation.alternatives already run
+   * through tryAlternative, keyed by recommendation id. Some action
+   * categories (crew_reassignment, task_resequence) are classified as
+   * `partially_resolved` by design and can NEVER come back `resolved` —
+   * without this, canTryAlternative in RecommendationQueue kept offering
+   * the same alternative forever, since it only checked
+   * `verification.outcome !== "resolved"` with no memory of what had
+   * already been tried. Re-clicking silently reran the identical
+   * alternative and produced the identical outcome, which looked like
+   * the button doing nothing. */
+  attemptedAlternatives: Record<string, number[]>;
   analyses: SignalAnalysis[];
   health: HealthState;
   drift: DriftState;
@@ -134,6 +145,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   signalOverrides: {},
   approvals: {},
   verifications: {},
+  attemptedAlternatives: {},
   analyses: initialOutput.analyses,
   health: initialOutput.health,
   drift: initialOutput.drift,
@@ -187,6 +199,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       signalOverrides: {},
       approvals: {},
       verifications: {},
+      attemptedAlternatives: {},
       asOf: DEMO_CURRENT_DATE,
       analyses: output.analyses,
       health: output.health,
@@ -304,6 +317,21 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // action, not a re-decision of the same one.
     const nextApprovals = { ...state.approvals };
     delete nextApprovals[recommendationId];
+
+    // Record this alternative as attempted BEFORE running the pipeline,
+    // so canTryAlternative in RecommendationQueue can stop offering it
+    // again regardless of what outcome comes back. Categories like
+    // crew_reassignment/task_resequence always verify as
+    // partially_resolved by design, so "outcome !== resolved" alone can
+    // never signal "stop offering this."
+    const nextAttempted = {
+      ...state.attemptedAlternatives,
+      [recommendationId]: [
+        ...(state.attemptedAlternatives[recommendationId] ?? []),
+        alternativeIndex,
+      ],
+    };
+    set({ attemptedAlternatives: nextAttempted });
 
     runApprovalPipeline(set, get, {
       analysis,
