@@ -13,3 +13,4 @@ export { seedInspections } from "./seedInspections";
 export { seedPermits } from "./seedPermits";
 export { seedWeather } from "./seedWeather";
 export { seedSignals } from "./seedSignals";
+export { seedUsers, DEFAULT_USER_ID } from "./seedUsers";

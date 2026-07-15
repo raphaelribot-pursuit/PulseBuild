@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { ChatContext } from "@/lib/chatContext";
 
 /**
@@ -46,6 +47,14 @@ function buildContextBlock(context: ChatContext): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Defense-in-depth: middleware.ts already blocks unauthenticated
+  // requests to this route, but checking again here means this route
+  // stays safe even if middleware.ts's matcher is ever misconfigured.
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

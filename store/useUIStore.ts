@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { User } from "@/domain/types";
+import { seedUsers, DEFAULT_USER_ID } from "@/data";
 
 /**
  * useUIStore
@@ -45,6 +47,21 @@ export interface UIStoreState {
 
   selectedSignalId: string | null;
   selectSignal: (signalId: string | null) => void;
+
+  /** Part 1 (mock roles) added `currentUser`/`switchUser` as a
+   * dropdown-driven stand-in for a real session. Part 2 wires a real
+   * Clerk session in via components/auth/UserSync.tsx, which calls
+   * `setCurrentUser` once Clerk reports the signed-in user + their
+   * publicMetadata.role. Nothing in the approval pipeline or UI changed
+   * to support this — it was already written to only ever read
+   * `.role`/`.id` off whatever `currentUser` is, regardless of source.
+   * `switchUser` is kept only as a test/dev convenience for picking a
+   * seed user without a live Clerk session (see tests/engines/
+   * approvalRoles.test.ts) — the real app no longer exposes it in the
+   * UI now that CommandTopBar reads the actual Clerk session. */
+  currentUser: User;
+  setCurrentUser: (user: User) => void;
+  switchUser: (userId: string) => void;
 }
 
 export const useUIStore = create<UIStoreState>((set) => ({
@@ -62,4 +79,16 @@ export const useUIStore = create<UIStoreState>((set) => ({
 
   selectedSignalId: null,
   selectSignal: (signalId) => set({ selectedSignalId: signalId }),
+
+  // Defaults to the seed superintendent until UserSync overwrites this
+  // with the real Clerk session on mount — avoids a null-currentUser
+  // case throughout the rest of the app for the brief window before
+  // Clerk reports isLoaded.
+  currentUser: seedUsers.find((u) => u.id === DEFAULT_USER_ID)!,
+  setCurrentUser: (user) => set({ currentUser: user }),
+  switchUser: (userId) =>
+    set((s) => {
+      const next = seedUsers.find((u) => u.id === userId);
+      return next ? { currentUser: next } : s;
+    }),
 }));

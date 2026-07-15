@@ -26,6 +26,8 @@ import { runApprovalEngine, decideApproval } from "@/engines/approvalEngine";
 import { runVerificationEngine } from "@/engines/verificationEngine";
 import { runExecutionSimulation } from "@/lib/executionSimulation";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useUIStore } from "@/store/useUIStore";
+import { canRoleApprove } from "@/domain/rules/approvalRules";
 import { resetSpokenSignals, stopSpeech } from "@/lib/voiceAdapter";
 import { stopCloudSpeech } from "@/lib/cloudVoiceAdapter";
 
@@ -219,6 +221,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       console.warn(`approveRecommendation: no recommendation "${recommendationId}" found.`);
       return;
     }
+    const { currentUser } = useUIStore.getState();
+    if (!canRoleApprove(recommendation.actionCategory, currentUser.role)) {
+      console.warn(
+        `approveRecommendation: role "${currentUser.role}" cannot approve "${recommendation.actionCategory}".`
+      );
+      return;
+    }
     runApprovalPipeline(set, get, {
       analysis,
       recommendationId,
@@ -236,6 +245,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       console.warn(`rejectRecommendation: no recommendation "${recommendationId}" found.`);
       return;
     }
+    const { currentUser } = useUIStore.getState();
+    if (!canRoleApprove(recommendation.actionCategory, currentUser.role)) {
+      console.warn(
+        `rejectRecommendation: role "${currentUser.role}" cannot decide on "${recommendation.actionCategory}".`
+      );
+      return;
+    }
 
     const decidedAt = state.asOf;
     const starting =
@@ -244,7 +260,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const decided = decideApproval({
       current: starting,
       decision: "reject",
-      decidedBy: "user",
+      decidedBy: currentUser.id,
       decidedAt,
     });
     if (!decided.ok) {
@@ -290,6 +306,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!analysis || !recommendation || !alternative) {
       console.warn(
         `tryAlternative: no recommendation/alternative "${recommendationId}"[${alternativeIndex}] found.`
+      );
+      return;
+    }
+    const { currentUser } = useUIStore.getState();
+    if (!canRoleApprove(alternative.actionCategory, currentUser.role)) {
+      console.warn(
+        `tryAlternative: role "${currentUser.role}" cannot decide on "${alternative.actionCategory}".`
       );
       return;
     }
@@ -373,7 +396,7 @@ function runApprovalPipeline(
   const decided = decideApproval({
     current: starting,
     decision: "approve",
-    decidedBy: "user",
+    decidedBy: useUIStore.getState().currentUser.id,
     decidedAt,
   });
   if (!decided.ok) {

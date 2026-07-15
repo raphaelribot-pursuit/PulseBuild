@@ -1,7 +1,9 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useAgentStore } from "@/store/useAgentStore";
+import { useUIStore } from "@/store/useUIStore";
 import { useSimulationStore, SimulationStatus } from "@/store/useSimulationStore";
 import { formatAbsoluteTime } from "@/lib/formatters";
 import { unlockAudio } from "@/lib/cloudVoiceAdapter";
@@ -32,6 +34,7 @@ const STATUS_DOT_CLASS: Record<SimulationStatus, string> = {
 export function CommandTopBar() {
   const project = useProjectStore((s) => s.project);
   const asOf = useAgentStore((s) => s.asOf);
+  const currentUser = useUIStore((s) => s.currentUser);
 
   const status = useSimulationStore((s) => s.status);
   const startSimulation = useSimulationStore((s) => s.startSimulation);
@@ -50,6 +53,16 @@ export function CommandTopBar() {
       <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <span className="text-xs font-data text-muted-text uppercase tracking-wide">
           As of {formatAbsoluteTime(asOf)} UTC
+        </span>
+
+        {/* Part 2 (real login): replaces the mock "Acting as" dropdown
+            from Part 1. currentUser is now synced from the real Clerk
+            session by components/auth/UserSync.tsx — role comes from
+            that user's publicMetadata.role set in the Clerk dashboard.
+            UserButton gives sign-out / account management for free. */}
+        <span className="text-xs font-data text-muted-text uppercase tracking-wide flex items-center gap-2">
+          {currentUser.name} ({currentUser.role.replace("_", " ")})
+          <UserButton />
         </span>
 
         <span className="text-xs font-data text-muted-text uppercase tracking-wide px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">

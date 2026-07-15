@@ -29,6 +29,19 @@ export interface Phase {
   status: "planned" | "active" | "completed";
 }
 
+/** Mock roles only for MVP (SoT v2.0: production authentication and
+ * enterprise permissions are explicitly out of scope). Real login will
+ * populate a User with one of these roles later without changing
+ * anything downstream — approvalRules.ts and the approval pipeline only
+ * ever consume `role`, never how it was authenticated. */
+export type UserRole = "superintendent" | "pm" | "foreman" | "safety_lead";
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
 export type CrewStatus = "active" | "idle" | "blocked";
 
 export interface Crew {

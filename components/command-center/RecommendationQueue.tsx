@@ -2,8 +2,10 @@
 
 import { useMemo } from "react";
 import { useAgentStore, selectRecommendationQueue } from "@/store/useAgentStore";
+import { useUIStore } from "@/store/useUIStore";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { TIER_COLOR_CLASS, TIER_LABEL } from "@/lib/formatters";
+import { APPROVAL_RULES, canRoleApprove } from "@/domain/rules/approvalRules";
 
 /**
  * RecommendationQueue
@@ -29,6 +31,7 @@ export function RecommendationQueue() {
   const approveRecommendation = useAgentStore((s) => s.approveRecommendation);
   const rejectRecommendation = useAgentStore((s) => s.rejectRecommendation);
   const tryAlternative = useAgentStore((s) => s.tryAlternative);
+  const currentUser = useUIStore((s) => s.currentUser);
   const queue = useMemo(() => selectRecommendationQueue(analyses), [analyses]);
 
   if (queue.length === 0) {
@@ -54,6 +57,8 @@ export function RecommendationQueue() {
           const approval = approvals[recommendation.id];
           const verification = verifications[recommendation.id];
           const decided = approval?.status === "approved" || approval?.status === "rejected";
+          const roleCanDecide = canRoleApprove(recommendation.actionCategory, currentUser.role);
+          const roleBlockReason = APPROVAL_RULES[recommendation.actionCategory].reason;
           const isClosed = signal.status === "resolved" || signal.status === "archived";
           const tried = attemptedAlternatives[recommendation.id] ?? [];
           // Only offer alternatives that haven't been tried yet. Some
@@ -136,12 +141,23 @@ export function RecommendationQueue() {
                 </p>
               )}
 
+              {!roleCanDecide && !decided && (
+                <p className="mt-2 text-xs text-warning-amber animate-fade-in-up">
+                  Read-only for your role ({currentUser.role.replace("_", " ")}) —{" "}
+                  {roleBlockReason} Only{" "}
+                  {APPROVAL_RULES[recommendation.actionCategory].allowedRoles
+                    .map((r) => r.replace("_", " "))
+                    .join(" or ")}{" "}
+                  can decide on this.
+                </p>
+              )}
+
               <div className="flex items-center gap-2 mt-3">
                 <button
-                  disabled={decided}
+                  disabled={decided || !roleCanDecide}
                   onClick={() => approveRecommendation(recommendation.id)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                    decided
+                    decided || !roleCanDecide
                       ? "bg-build-green/20 text-build-green/60 cursor-not-allowed"
                       : "bg-build-green/20 text-build-green hover:bg-build-green/30"
                   }`}
@@ -149,10 +165,10 @@ export function RecommendationQueue() {
                   Approve
                 </button>
                 <button
-                  disabled={decided}
+                  disabled={decided || !roleCanDecide}
                   onClick={() => rejectRecommendation(recommendation.id)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                    decided
+                    decided || !roleCanDecide
                       ? "bg-safety-red/20 text-safety-red/60 cursor-not-allowed"
                       : "bg-safety-red/20 text-safety-red hover:bg-safety-red/30"
                   }`}
@@ -171,20 +187,31 @@ export function RecommendationQueue() {
 
               {canTryAlternative && (
                 <div className="mt-2 flex flex-col gap-1.5 animate-fade-in-up">
-                  {untriedAlternatives.map(({ alt, i }) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between gap-2 text-xs border border-white/10 rounded-md px-2 py-1.5"
-                    >
-                      <span className="text-white/80 truncate">{alt.action}</span>
-                      <button
-                        onClick={() => tryAlternative(recommendation.id, i)}
-                        className="shrink-0 text-[10px] font-medium px-2 py-1 rounded-md bg-signal-cyan/15 text-signal-cyan hover:bg-signal-cyan/25 transition-colors"
+                  {untriedAlternatives.map(({ alt, i }) => {
+                    const altRoleCanDecide = canRoleApprove(alt.actionCategory, currentUser.role);
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-xs border border-white/10 rounded-md px-2 py-1.5"
                       >
-                        Try this instead
-                      </button>
-                    </div>
-                  ))}
+                        <span className="text-white/80 truncate">{alt.action}</span>
+                        {altRoleCanDecide ? (
+                          <button
+                            onClick={() => tryAlternative(recommendation.id, i)}
+                            className="shrink-0 text-[10px] font-medium px-2 py-1 rounded-md bg-signal-cyan/15 text-signal-cyan hover:bg-signal-cyan/25 transition-colors"
+                          >
+                            Try this instead
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-[10px] text-muted-text">
+                            Requires {APPROVAL_RULES[alt.actionCategory].allowedRoles
+                              .map((r) => r.replace("_", " "))
+                              .join(" or ")}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
